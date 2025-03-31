@@ -1,0 +1,305 @@
+# Load necessary libraries
+library(quantmod)
+library(tidyverse)
+library(tidyquant)
+library(dplyr)
+library(ggplot2)
+library(caret) 
+library(zoo)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+library(tidyquant)
+library(dplyr)
+
+
+# Fetch the Tesla stock prices data
+price=tq_get("TSLA",get="stock.prices",from ="2020-01-01", to="2024-06-20")
+
+# Print the first few rows of the dataset to understand its structure
+head(price)
+str(price)
+view(tail(price))
+view(tail(price))
+sum(is.na(price))
+price <- price %>% drop_na()
+
+# Define functions for imputation (The impute_mean function fills in missing values in a numeric vector by replacing each NA with the mean of all non-NA elements of that vector.)
+impute_mean <- function(x) {
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+  return(x)
+}
+
+impute_median <- function(x) {
+  x[is.na(x)] <- median(x, na.rm = TRUE)
+  return(x)
+}
+
+get_mode <- function(x) {
+  uniq_x <- unique(x[!is.na(x)])
+  uniq_x[which.max(tabulate(match(x, uniq_x)))]
+}
+
+impute_mode <- function(x) {
+  mode_value <- get_mode(x)
+  x[is.na(x)] <- mode_value
+  return(x)
+}
+
+# Imputation: Filling missing values with mean, median, or mode.
+# Apply imputation to the relevant columns (assuming numerical columns)
+data_imputed_mean <- price %>%
+  mutate(across(where(is.numeric), impute_mean))
+
+data_imputed_median <- price %>%
+  mutate(across(where(is.numeric), impute_median))
+
+data_imputed_mode <- price %>%
+  mutate(across(where(is.numeric), impute_mode))
+
+# Print results
+print("Data with Mean Imputation:")
+print(head(data_imputed_mean))
+
+print("Data with Median Imputation:")
+print(head(data_imputed_median))
+
+print("Data with Mode Imputation:")
+print(head(data_imputed_mode))
+
+# Load necessary libraries
+
+
+# Fetch the Tesla stock prices data
+data <- tq_get("TSLA", get = "stock.prices", from = "2020-01-01", to = "2024-06-20")
+
+# Define a function to drop rows with excessive missing values
+drop_rows_with_excessive_na <- function(df, threshold = 0.2) {
+# Calculate the fraction of missing values per row
+  missing_fraction <- rowMeans(is.na(df))
+  
+# Drop rows where the fraction of missing values exceeds the threshold
+  df_cleaned <- df[missing_fraction <= threshold, ]
+  return(df_cleaned)
+}
+# Apply the function with a threshold of 20%
+data_cleaned_rows <- drop_rows_with_excessive_na(data, threshold = 0.2)
+
+# Print the dimensions of the cleaned dataset
+print(dim(data_cleaned_rows))
+
+
+# Histogram
+hist(price$close, breaks = 30, main = "Histogram of Close Prices", xlab = "Close Price")
+
+
+# Create a boxplot for the closing prices
+boxplot(price$close, main = "Boxplot of Tesla's Closing Prices", ylab = "Closing Price", col = "lightblue") 
+
+
+# getting the outlier
+boxplot.stats(price$close)$out
+
+lower_bound <- quantile(price$close, 0.025)
+lower_bound
+
+upper_bound <- quantile(price$close, 0.975)
+upper_bound
+
+#  all observations below 36.40818 and above 361.5314 will be considered as potential outliers. The row numbers of the observations outside of the interval can then be extracted with the which() function
+outlier_ind <- which(price$close < lower_bound | price$close > upper_bound)
+outlier_ind
+
+price[outlier_ind, ]
+view(price[outlier_ind, ])
+
+# histogram
+price$h_close <- scale(price$close)
+hist(price$h_close)
+
+
+# Create and display a histogram of closing prices
+histogram_plot <- ggplot(price, aes(x = close)) +
+  geom_histogram(binwidth = 5, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Tesla Closing Prices") +
+  xlab("Closing Price") +
+  ylab("Frequency") +
+  theme_minimal()
+
+# Print the histogram plot
+print(histogram_plot)
+
+
+# QQ Plot
+qqnorm(price$close, xlab = "Depedent variable (close)")
+qqline(price$close, col = "red")
+
+# Kolmogorov-Smirnov Test
+ks_test <- ks.test(price$close, "pnorm", mean = mean(price$close), sd = sd(price$close))
+ks_test
+
+# Plotting the ECDF of the data
+plot(ecdf(price$close), main="K-S Test: ECDF vs Normal CDF", xlab="Price", ylab="Cumulative Probability")
+
+# Adding the theoretical normal CDF
+x <- seq(min(price$close), max(price$close), length.out=100)
+lines(x, pnorm(x, mean=mean(price$close), sd=sd(price$close)), col="red", lwd=2)
+
+# Displaying the K-S test results on the plot
+legend("bottomright", legend=paste("KS Statistic =", round(ks_test$statistic, 3), "\n p-value =", round(ks_test$p.value, 3)), bty="n")
+
+# Shapiro-Wilk normality test
+shapiro.test(price$close)
+
+
+# Candlestick Test 
+tcand = price %>%
+  ggplot(aes(x = date, y = close)) +
+  geom_candlestick(aes(open = open, high = high, low = low, close = close)) +
+  labs(title = "SMEs Predictive Chart", y = "Closing Price", x = "") +
+  theme_tq()
+
+tcand
+
+
+# Create a categorical variable based on closing prices
+price <- price %>%
+  mutate(price_category = case_when(
+    close < quantile(close, 0.33) ~ "Low",
+    close >= quantile(close, 0.33) & close < quantile(close, 0.67) ~ "Medium",
+    close >= quantile(close, 0.67) ~ "High"
+  ))
+
+# Display the dataset with the new categorical variable
+print("Dataset with Categorical Variable:")
+print(head(price))
+
+
+# One-Hot Encoding
+# Only use relevant columns for dummyVars
+dummies <- dummyVars(~ price_category, data = price)
+encoded_data <- predict(dummies, newdata = price)
+encoded_data <- as.data.frame(encoded_data)
+
+# Add the original numeric columns back if needed
+encoded_data <- cbind(encoded_data, price %>% select(-price_category))
+
+# Display one-hot encoded dataset
+print("One-Hot Encoded Data:")
+print(head(encoded_data))
+
+# Label Encoding
+# Convert 'price_category' to numeric labels
+price$price_category_encoded <- as.numeric(factor(price$price_category, levels = c("Low", "Medium", "High")))
+
+# Display dataset with label encoding
+print("Label Encoded Data:")
+print(head(price))
+
+
+price <- price %>% filter(close < quantile(price$close, 0.99))
+
+# Feature Engineering
+# Calculate 20-day and 50-day moving averages and 20-day volatility
+# Calculate the 20-day and 50-day Moving Averages
+ price <- price %>%
+  mutate(MA20 = rollmean(adjusted, 20, fill = NA, align = "right"),
+         MA50 = rollmean(adjusted, 50, fill = NA, align = "right"),
+         Volatility = rollapply(adjusted, 20, sd, fill = NA, align = "right"))
+
+
+# Plot the original closing prices and moving averages
+ggplot(data = price, aes(x = date)) +
+  geom_line(aes(y = adjusted, color = "Closing Price"), size = 1) +
+  geom_line(aes(y = MA20, color = "MA20 (20-day)"), size = 1, linetype = "dashed") +
+  geom_line(aes(y = MA50, color = "MA50 (50-day)"), size = 1, linetype = "dotted") +
+  labs(title = "Tesla (TSLA) Stock Prices with Moving Averages",
+       x = "Date",
+       y = "Price",
+       color = "Legend") +
+  scale_color_manual(values = c("Closing Price" = "black", "MA20 (20-day)" = "blue", "MA50 (50-day)" = "red")) +
+  theme_minimal()
+
+# Remove rows with NA values created by moving averages and volatility
+price <- na.omit(price)
+
+# Select the features for correlation analysis
+data <- price %>%
+  select(MA20, MA50, Volatility, close)
+
+# Compute the correlation matrix
+corr_matrix <- cor(data)
+
+# Print the correlation matrix
+print(corr_matrix)
+
+# Visualize the correlation matrix
+corrplot(corr_matrix, method = "color", type = "upper", order = "hclust", 
+         addCoef.col = "black", tl.col = "black", tl.srt = 45, diag = FALSE)
+
+# Standardize features
+data <- price %>%
+  select(MA20, MA50, Volatility, close)
+data_scaled <- scale(data)
+print(head(data_scaled))
+
+hist(data_scaled)
+summary(data_scaled)
+
+
+# Standardization (Z-Score Normalization)
+price_standardized <- price %>%
+mutate(across(c(close, volume, adjusted), scale))
+# View the standardized data
+head(price_standardized)
+
+price$z_standardized <- scale(price$close)
+
+hist(price$z_standardized)
+
+# Min-Max Scaling function
+min_max_scale <- function(x) {return ((x - min(x)) / (max(x) - min(x)))}
+# Apply Min-Max Scaling
+price_normalized <- price %>%
+mutate(across(c(close, volume, adjusted), min_max_scale))
+# View the normalized data
+head(price_normalized)
+
+
+# Fit the decision tree model
+model_tree <- rpart(close ~ MA20 + MA50 + Volatility, data = price, method = "anova")
+
+# Summary of the model (This will be in text form, so we’ll plot the tree instead)
+summary(model_tree)
+
+# Save the decision tree plot as a PNG image
+png("decision_tree_plot.png", width = 800, height = 600)
+rpart.plot(model_tree, main = "Decision Tree for Predicting Close Price")
+dev.off()
+
+
+# Linear Regression
+model_lm <- lm(close ~ MA20 + MA50 + Volatility, data = price)
+summary(model_lm)
+coef(model_lm)
+confint(model_lm)
+
+
+# Fit decision tree model
+model_tree <- rpart(close ~ MA20 + MA50 + Volatility, data = price, method = "anova")
+# Summary of the model
+summary(model_tree)
+rpart.plot(model_tree)
+
+
+# Fit random forest model
+install.packages("randomForest")
+library(randomForest)
+model_rf <- randomForest(close ~ MA20 + MA50 + Volatility, data = price, ntree = 500)
+print(model_rf)
+
+# Fit SVM model
+model_svm <- svm(close ~ MA20 + MA50 + Volatility, data = price)
+summary(model_svm)
+

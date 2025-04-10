@@ -21,7 +21,7 @@ Visualization: Creating insightful plots and dashboards.
 # Installation
 Clone the repository and install the necessary dependencies:
 
-git clone [https://github.com/your-repo.git](https://github.com/omolaja/Predictive-Financial-Modelling.git)  
+git clone https://github.com/omolaja/Predictive-Financial-Modelling.git 
  
 # Install required R packages  
 install.packages(c("ggplot2", "dplyr", "caret"))  
